@@ -1,9 +1,9 @@
 import { createGatewayProvider } from "@ai-sdk/gateway";
-import { streamText, UIMessage, convertToModelMessages, stepCountIs, tool, ModelMessage, Output } from "ai";
+import { streamText, UIMessage, convertToModelMessages, stepCountIs, tool, ModelMessage } from "ai";
 import { z } from "zod";
 import { fetchWeather } from "@/app/lib/fetchWeather";
 import { setHistory, getHistory } from "@/app/lib/store";
-import { TripCard } from '@/app/lib/schemas';
+// import { TripCard } from '@/app/lib/schemas';
 
 const gatewayProvider = createGatewayProvider({
     apiKey: process.env.AI_GATEWAY_API_KEY
@@ -16,17 +16,23 @@ interface RequestBody {
 
 export async function POST(request:Request){
     try {
+        if (!process.env.AI_GATEWAY_API_KEY) {
+            return new Response(JSON.stringify({ error: "API configuration error" }), {
+                status: 500,
+                headers: { 'Content-Type': 'application/json' }
+            });
+        }
         const { messages, conversationId }: RequestBody = await request.json();
         const finalConversationId = conversationId || crypto.randomUUID();
-        const modelMessages = convertToModelMessages(messages);
+
+        // Convert UI messages to model messages
+        const modelMessages: ModelMessage[] = convertToModelMessages(messages);
         const prior: ModelMessage[] = getHistory(finalConversationId) || [];
         
-        console.log("Prior messages:", prior.length, "Current messages:", modelMessages.length, conversationId);
-
         const response = streamText({
             model: gatewayProvider("openai/gpt-4o"),
             system: "You are TripMate, a smart travel companion that provides users with travel suggestions, local event updates, and real-time weather insights to help them plan better trips.",
-            messages: modelMessages,
+            messages: [...prior, ...modelMessages],
             onChunk({ chunk }) {
                 if (chunk.type === 'reasoning-delta') {
                     console.log("Reasoning:", chunk.text);
@@ -57,10 +63,9 @@ export async function POST(request:Request){
                     }
                 }
                 
-                // Always return activeTools for all steps
                 return {
                     toolChoice: "none",
-                    activeTools: ['weather'], // Make sure tools are available
+                    activeTools: ['weather'],
                 };
             },
             onStepFinish({ text, toolCalls, finishReason, usage }) {
@@ -69,7 +74,7 @@ export async function POST(request:Request){
             },
             onFinish({ response, totalUsage }) {
                 const generated = response.messages;
-                setHistory(finalConversationId, [...modelMessages, ...generated]);
+                setHistory(finalConversationId, [...prior, ...modelMessages, ...generated]);
                 console.log('[totalUsage]', totalUsage);
             },
             tools: {
@@ -94,12 +99,11 @@ export async function POST(request:Request){
             onError({ error }) {
                 console.error("Stream Error: ", error);
             },
-            experimental_output: Output.object({
-                schema: TripCard,
-            }),
         });
 
-        const streamResponse = response.toUIMessageStreamResponse();
+        const streamResponse = response.toUIMessageStreamResponse({
+            originalMessages: messages,
+        });
         return new Response(streamResponse.body, {
             headers: {
                 ...streamResponse.headers,

@@ -21,7 +21,10 @@ export default function NewChat() {
         setIsending(true);
         setIsLoading(false);
         setIsSubmitting(false);
-        const newConversationId = crypto.randomUUID();
+        const newConversationId =
+        typeof window !== "undefined" && window.crypto?.randomUUID
+          ? window.crypto.randomUUID()
+          : Math.random().toString(36).substring(2, 20);
         router.push(`/chat/${newConversationId}?message=${encodeURIComponent(trimmedInput)}`);
       } catch (error) {
         console.error("Failed to send message:", error);
