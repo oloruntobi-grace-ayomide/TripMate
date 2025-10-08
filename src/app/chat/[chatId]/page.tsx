@@ -22,15 +22,16 @@ export default function DynamicChat() {
   const [initialMessageSent, setInitialMessageSent] = useState(false);
   
   const { messages, sendMessage, status} = useChat({
-     transport: new DefaultChatTransport({
+    transport: new DefaultChatTransport({
       api: "/api/chat",
-      prepareSendMessagesRequest(request) {
+      prepareSendMessagesRequest({ messages, id }) {
         return {
           body: {
-            conversationId: request.id,
+            messages,          
+            conversationId: params.chatId ?? id,
           },
         };
-      },
+      }
     }),
     onError: (error) => {
       console.error("Chat error:", error);
@@ -44,29 +45,26 @@ export default function DynamicChat() {
   const lastUserMessageCountRef = useRef(0);
 
   // Auto-send initial message from URL
-   useEffect(() => {
+  useEffect(() => {
     const initialMessage = searchParams.get('message');
-    const sendInitialMessage = async () => {
-      if (!initialMessage?.trim() || initialMessageSent || !params.chatId) {
-        return;
-      }
-      try {
-        await sendMessage({
-          role: "user" as const,
-          parts: [{ type: "text", text: initialMessage }],
-        })
-        setInitialMessageSent(true); 
-        const newUrl = `/chat/${params.chatId}`;
-        window.history.replaceState(null, '', newUrl); 
-      } catch (error) {
-        console.error("Failed to send initial message:", error);
-        setInitialMessageSent(true);
-      }
-    };
-
-    sendInitialMessage();
-  }, [searchParams, initialMessageSent, params.chatId, sendMessage]);
+    if (!initialMessage?.trim() || !params.chatId) return;
   
+    const storageKey = `chat:${params.chatId}:initial-sent`;
+    if (typeof window !== 'undefined' && sessionStorage.getItem(storageKey) === '1') return;
+  
+    (async () => {
+      try {
+        await sendMessage({ text: initialMessage });
+      } finally {
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem(storageKey, '1');
+          const newUrl = `/chat/${params.chatId}`;
+          window.history.replaceState(null, '', newUrl);
+        }
+      }
+    })();
+  }, [searchParams, initialMessageSent, params.chatId, sendMessage]);
+
   // Auto-scroll ONLY when user sends a new message
   useEffect(() => {
     const currentUserMessages = messages.filter(msg => msg.role === 'user').length;
@@ -87,10 +85,7 @@ export default function DynamicChat() {
     
     try {
       setInput("");
-      await sendMessage({
-          role: "user" as const,
-          parts: [{ type: "text", text: trimmedInput }],
-        })
+      await sendMessage({ text: trimmedInput })
     } catch (error) {
       console.error("Failed to send message:", error);
     }
@@ -100,29 +95,29 @@ export default function DynamicChat() {
     switch (part.type) {
       case "reasoning":
         return (
-          <div key={`${messageId}-${index}`} className="text-sm italic opacity-75">
+          <div key={`${messageId}-${index}-reasoning`} className="text-sm italic opacity-75">
             {part.text}
           </div>
         ); 
       case 'text':
         return (
-          <div key={`${messageId}-${index}`}>{part.text}</div>
+          <div key={`${messageId}-${index}-text`}>{part.text}</div>
         );
       case 'tool-call':
         return (
-          <div key={`${messageId}-${index}`} className="text-sm text-blue-600">
+          <div key={`${messageId}-${index}-tool-call`} className="text-sm text-blue-600">
             Calling tool: {part.toolName}
           </div>
         );
       case 'tool-result':
         return (
-          <div key={`${messageId}-${index}`} className="text-sm text-green-600">
+          <div key={`${messageId}-${index}-tool-result`} className="text-sm text-green-600">
             Tool result received
           </div>
         );
       case 'data':
         return (
-          <div key={`${messageId}-${index}`} className="text-sm text-gray-600">
+          <div key={`${messageId}-${index}-data`} className="text-sm text-gray-600">
             Data: {JSON.stringify(part.data)}
           </div>
         );
@@ -145,9 +140,9 @@ export default function DynamicChat() {
     >
       <div className="flex flex-col space-y-4 p-4">
         {messages.length > 0 && (
-          messages.map(message => (
+          messages.map((message, index) => (
             
-            <div key={message.id} className={`flex flex-col ${message.role === 'user' ? "items-end" : "items-start"}`}>
+            <div key={`${message.id}-${index}`} className={`flex flex-col ${message.role === 'user' ? "items-end" : "items-start"}`}>
               <div className={`p-[10px] ${message.role === 'user' ? "max-w-[70%] w-fit bg-[#dadfe7] text-[#1a1f26] rounded-[15px]" : ""}`}>
                   {message.parts.map((part, i) => renderMessagePart(part as MessagePartType, message.id, i))}
               </div>
