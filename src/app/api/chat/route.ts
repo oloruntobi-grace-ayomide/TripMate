@@ -41,7 +41,7 @@ export async function POST(request:Request){
                     userInput = lastMessage.content.toLowerCase();
                 } else if (Array.isArray(lastMessage.content)) {
                     userInput = lastMessage.content
-                        .map(part => part.type === 'text' ? (part as any).text : '')
+                        .map(part => part.type === 'text' ? (part).text : '')
                         .join(' ')
                         .toLowerCase();
                 }
@@ -78,7 +78,7 @@ export async function POST(request:Request){
                     inputSchema: z.object({
                         location: z.string().describe('City name, e.g., "Lagos"')
                     }),
-                    async execute({ location }, { abortSignal }) {
+                    async execute({ location }) {
                         console.log("Fetching weather for:", location);
                         try {
                             const data = await fetchWeather(location);
@@ -116,41 +116,3 @@ export async function POST(request:Request){
     }
 }
 
-// Simple test route to check gateway
-export async function GET() {
-    try {
-        console.log("Testing gateway provider with key:", process.env.AI_GATEWAY_API_KEY?.substring(0, 10) + '...');
-        
-        const testResponse = await fetch('https://api.gateway.ai/v1/models', {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${process.env.AI_GATEWAY_API_KEY}`,
-                'Content-Type': 'application/json'
-            }
-        });
-
-        console.log("Gateway response status:", testResponse.status);
-        console.log("Gateway response headers:", Object.fromEntries(testResponse.headers.entries()));
-        
-        let responseBody;
-        try {
-            responseBody = await testResponse.text();
-            console.log("Gateway response body:", responseBody);
-        } catch (e) {
-            console.log("Could not read response body:", e);
-        }
-
-        return new Response(JSON.stringify({
-            gatewayStatus: testResponse.status,
-            gatewayStatusText: testResponse.statusText,
-            apiKeyExists: !!process.env.AI_GATEWAY_API_KEY,
-            responseBody: responseBody
-        }));
-    } catch (error) {
-        console.error("Gateway test failed with error:", error);
-        return new Response(JSON.stringify({
-            error: "Gateway test failed",
-            details: error,
-        }), { status: 500 });
-    }
-}

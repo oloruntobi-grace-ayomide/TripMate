@@ -1,12 +1,12 @@
 "use client"
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, FormEvent } from "react";
 interface ChatFormProps {
     input: string;
     setInput: (value: string) => void;
     isLoading: boolean;
     isSubmitting:boolean;
     isSending?:boolean;
-    handleSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
+    handleSubmit: (e: FormEvent<HTMLFormElement>) => void;
 }
 
 export default function ChatForm({ input, setInput, isLoading, isSubmitting, isSending = false, handleSubmit }: ChatFormProps) {
@@ -30,7 +30,7 @@ export default function ChatForm({ input, setInput, isLoading, isSubmitting, isS
         }
     }, [input]);
 
-    const handleInput = (e: React.FormEvent<HTMLTextAreaElement>) => {
+    const handleInput = (e: FormEvent<HTMLTextAreaElement>) => {
         const target = e.currentTarget;
         
         // Auto-resize
@@ -42,6 +42,20 @@ export default function ChatForm({ input, setInput, isLoading, isSubmitting, isS
         const isMultiLine = lineCount > 1 || target.scrollHeight > target.clientHeight;
         setHasMultipleLines(isMultiLine);
   
+    };
+
+    const handleEnterKeySubmit = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            
+            // Create a synthetic form event
+            const syntheticEvent = {
+                preventDefault: () => e.preventDefault(),
+                currentTarget: document.createElement('form')
+            } as FormEvent<HTMLFormElement>;
+            
+            handleSubmit(syntheticEvent);
+        }
     };
 
     const getButtonState = () => {
@@ -67,14 +81,9 @@ export default function ChatForm({ input, setInput, isLoading, isSubmitting, isS
                 className={`scrollbar-thin px-4 pr-12 resize-none outline-none rounded-2xl overflow-y-auto text-gray-800 placeholder-gray-500 ${hasMultipleLines ? 'w-full max-h-[200px]' : 'flex-1'}`}
                 placeholder="Message AI..."
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e:React.ChangeEvent<HTMLTextAreaElement>) => setInput(e.target.value)}
                 onInput={handleInput}
-                onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSubmit(e as any);
-                    }
-                }}
+                onKeyDown={handleEnterKeySubmit}
                 rows={1}
                 aria-label="Chat message"
                 ></textarea>

@@ -18,7 +18,9 @@ export default function NewChat() {
       if (!trimmedInput || isLoading || isSubmitting) return; 
       try {
         setInput("");
-        setIsending(true)
+        setIsending(true);
+        setIsLoading(false);
+        setIsSubmitting(false);
         const newConversationId = crypto.randomUUID();
         router.push(`/chat/${newConversationId}?message=${encodeURIComponent(trimmedInput)}`);
       } catch (error) {

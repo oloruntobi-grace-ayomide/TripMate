@@ -1,23 +1,39 @@
 "use client"
 import { useChat } from "@ai-sdk/react";
-import { useParams, useRouter, useSearchParams} from "next/navigation";
+import { DefaultChatTransport } from "ai";
+import { useParams, useSearchParams} from "next/navigation";
 import { useState, useEffect, useRef, FormEvent } from "react";
 import PagesLayout from "@/app/component/Layout";
 import ChatForm from "@/app/component/ChatForm";
 
-export default function Home() {
+
+export type MessagePartType = 
+  | { type: "text"; text: string }
+  | { type: "reasoning"; text: string }
+  | { type: "tool-call"; toolName: string }
+  | { type: "tool-result"; result: unknown }
+  | { type: "data"; data: unknown };
+
+
+export default function DynamicChat() {
   const [input, setInput] = useState("");
   const params = useParams<{ chatId?: string }>();
   const searchParams = useSearchParams();
-  const router = useRouter();
   const [initialMessageSent, setInitialMessageSent] = useState(false);
   
-  const { messages, sendMessage, status } = useChat({
-    transport:{
-      api:"/api/chat",
-      body:{//send this to the server along side the messages
-        conversationId: params?.chatId ?? null
-      }
+  const { messages, sendMessage, status} = useChat({
+     transport: new DefaultChatTransport({
+      api: "/api/chat",
+      prepareSendMessagesRequest(request) {
+        return {
+          body: {
+            conversationId: request.id,
+          },
+        };
+      },
+    }),
+    onError: (error) => {
+      console.error("Chat error:", error);
     }
   });
 
@@ -30,21 +46,15 @@ export default function Home() {
   // Auto-send initial message from URL
    useEffect(() => {
     const initialMessage = searchParams.get('message');
-    console.log("Checking conditions:", { 
-      initialMessage, 
-      initialMessageSent, 
-      messagesCount: messages.length,
-      hasParamsId: !!params.chatId
-    });
-
     const sendInitialMessage = async () => {
       if (!initialMessage?.trim() || initialMessageSent || !params.chatId) {
-        console.log("Skipping - condition not met");
         return;
       }
       try {
-        console.log("Sending initial message:", initialMessage);
-        await sendMessage({text: initialMessage});
+        await sendMessage({
+          role: "user" as const,
+          parts: [{ type: "text", text: initialMessage }],
+        })
         setInitialMessageSent(true); 
         const newUrl = `/chat/${params.chatId}`;
         window.history.replaceState(null, '', newUrl); 
@@ -55,7 +65,7 @@ export default function Home() {
     };
 
     sendInitialMessage();
-  }, []);
+  }, [searchParams, initialMessageSent, params.chatId, sendMessage]);
   
   // Auto-scroll ONLY when user sends a new message
   useEffect(() => {
@@ -69,7 +79,6 @@ export default function Home() {
     }
   }, [messages]);
 
-
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     
@@ -78,9 +87,47 @@ export default function Home() {
     
     try {
       setInput("");
-      await sendMessage({text:trimmedInput});
+      await sendMessage({
+          role: "user" as const,
+          parts: [{ type: "text", text: trimmedInput }],
+        })
     } catch (error) {
       console.error("Failed to send message:", error);
+    }
+  };
+
+  const renderMessagePart = (part: MessagePartType, messageId: string, index: number) => {
+    switch (part.type) {
+      case "reasoning":
+        return (
+          <div key={`${messageId}-${index}`} className="text-sm italic opacity-75">
+            {part.text}
+          </div>
+        ); 
+      case 'text':
+        return (
+          <div key={`${messageId}-${index}`}>{part.text}</div>
+        );
+      case 'tool-call':
+        return (
+          <div key={`${messageId}-${index}`} className="text-sm text-blue-600">
+            Calling tool: {part.toolName}
+          </div>
+        );
+      case 'tool-result':
+        return (
+          <div key={`${messageId}-${index}`} className="text-sm text-green-600">
+            Tool result received
+          </div>
+        );
+      case 'data':
+        return (
+          <div key={`${messageId}-${index}`} className="text-sm text-gray-600">
+            Data: {JSON.stringify(part.data)}
+          </div>
+        );
+      default:
+        return null;
     }
   };
 
@@ -102,22 +149,7 @@ export default function Home() {
             
             <div key={message.id} className={`flex flex-col ${message.role === 'user' ? "items-end" : "items-start"}`}>
               <div className={`p-[10px] ${message.role === 'user' ? "max-w-[70%] w-fit bg-[#dadfe7] text-[#1a1f26] rounded-[15px]" : ""}`}>
-                {message.parts.map((part, i) => {
-                  switch (part.type) {
-                    case "reasoning":
-                      return (
-                        <div key={`${message.id}-${i}`} className="text-sm italic opacity-75">
-                          {part.text}
-                        </div>
-                      ); 
-                    case 'text':
-                      return (
-                        <div key={`${message.id}-${i}`}>{part.text}</div>
-                      );
-                    default:
-                      return null;
-                  }
-                })}
+                  {message.parts.map((part, i) => renderMessagePart(part as MessagePartType, message.id, i))}
               </div>
             </div>            
           ))
