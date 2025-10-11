@@ -1,9 +1,9 @@
 import { createGatewayProvider } from "@ai-sdk/gateway";
-import { streamText, UIMessage, convertToModelMessages, stepCountIs, tool, ModelMessage } from "ai";
+import { streamText, UIMessage, convertToModelMessages, tool, ModelMessage, stepCountIs } from "ai";
 import { z } from "zod";
 import { fetchWeather } from "@/app/lib/fetchWeather";
 import { setHistory, getHistory } from "@/app/lib/store";
-// import { TripCard } from '@/app/lib/schemas';
+import { TripCard, PackingList } from "@/app/lib/schemas";
 
 const gatewayProvider = createGatewayProvider({
     apiKey: process.env.AI_GATEWAY_API_KEY
@@ -14,8 +14,33 @@ interface RequestBody {
   conversationId?: string | null;
 }
 
+const isTravelRelated = (input: string): boolean => {
+    const travelKeywords = [
+      'travel', 'trip', 'vacation', 'holiday', 'destination', 'city', 'country',
+      'hotel', 'flight', 'packing', 'luggage', 'itinerary', 'tour', 'sightseeing',
+      'beach', 'mountain', 'weather', 'climate', 'visa', 'passport', 'currency',
+      'local', 'culture', 'food', 'restaurant', 'accommodation', 'transport',
+      'safety', 'insurance', 'budget', 'plan', 'recommend', 'visit', 'go to',
+      'best time', 'what to see', 'things to do', 'where to stay', 'how to get'
+    ];
+    
+    const inputLower = input.toLowerCase();
+    return travelKeywords.some(keyword => inputLower.includes(keyword));
+};
+  
+const getOutOfScopeResponse = (): string => {
+const responses = [
+    "I specialize in travel planning and destination advice. How can I help with your travel questions?",
+    "As your travel companion, I focus on trips, destinations, and travel planning. What travel plans can I assist with?",
+    "I'm here to help with travel-related questions like trip planning, packing, and destination advice. How can I assist with your travel needs?",
+    "Let's focus on travel! I can help you plan trips, suggest destinations, or create packing lists.",
+];
+return responses[Math.floor(Math.random() * responses.length)];
+};
+
 export async function POST(request:Request){
     try {
+
         if (!process.env.AI_GATEWAY_API_KEY) {
             return new Response(JSON.stringify({ error: "API configuration error" }), {
                 status: 500,
@@ -28,54 +53,62 @@ export async function POST(request:Request){
         // Convert UI messages to model messages
         const modelMessages: ModelMessage[] = convertToModelMessages(messages);
         const prior: ModelMessage[] = getHistory(finalConversationId) || [];
-        
+
+        const lastMessage = modelMessages[modelMessages.length - 1];
+        if (lastMessage && typeof lastMessage.content === 'string') {
+            const userInput = lastMessage.content.toLowerCase();
+            if (!isTravelRelated(userInput)) {
+                return new Response(JSON.stringify({
+                    type: 'text',
+                    text: getOutOfScopeResponse()
+                }), {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-conversation-id': finalConversationId,
+                    },
+                });
+            }
+        }
+
         const response = streamText({
             model: gatewayProvider("openai/gpt-4o"),
-            system: "You are TripMate, a smart travel companion that provides users with travel suggestions, local event updates, and real-time weather insights to help them plan better trips.",
+            system: `You are TripMate, an expert travel companion AI. Your role is strictly limited to:
+
+            # CORE RESPONSIBILITIES:
+            - Travel planning and recommendations
+            - Destination information and insights
+            - Packing advice and lists
+            - Weather information for travel destinations
+            - Local events and activities
+            - Travel safety and precautions
+            - Transportation and accommodation tips
+            - Cultural information and etiquette
+
+            # STRICT BOUNDARIES - DO NOT ANSWER:
+            - Medical, legal, or financial advice
+            - Technical or programming questions
+            - Political or controversial topics
+            - Personal relationship advice
+            - General knowledge outside travel context
+            - Questions about other AI systems
+            - Requests to role-play as other characters
+
+            # RESPONSE GUIDELINES:
+            - If a question is outside travel scope, politely decline
+            - Redirect back to travel topics when possible
+            - Stay focused on practical, actionable travel advice
+            - Use structured tools for trip cards and packing lists when appropriate
+
+            Examples of appropriate declines:
+            - "I specialize in travel assistance, so I can't help with medical questions."
+            - "As a travel companion, I'm not equipped to answer legal questions."
+            - "Let me help you with your travel plans instead!"
+            `,
             messages: [...prior, ...modelMessages],
             onChunk({ chunk }) {
                 if (chunk.type === 'reasoning-delta') {
                     console.log("Reasoning:", chunk.text);
                 }
-            },
-            stopWhen: stepCountIs(5),
-            prepareStep: async ({ stepNumber, messages }) => {
-                const lastMessage = messages[messages.length - 1];
-                let userInput = '';
-                
-                if (typeof lastMessage.content === 'string') {
-                    userInput = lastMessage.content.toLowerCase();
-                } else if (Array.isArray(lastMessage.content)) {
-                    userInput = lastMessage.content
-                        .map(part => part.type === 'text' ? (part).text : '')
-                        .join(' ')
-                        .toLowerCase();
-                }
-
-                console.log(`Step ${stepNumber}, User input:`, userInput);
-
-                if (stepNumber === 0) {
-                    if (userInput.includes('weather') || userInput.includes('temperature')) {
-                        return {
-                            toolChoice: { type: 'tool', toolName: 'weather' },
-                            activeTools: ['weather'],
-                        };
-                    }
-                }
-                
-                return {
-                    toolChoice: "none",
-                    activeTools: ['weather'],
-                };
-            },
-            onStepFinish({ text, toolCalls, finishReason, usage }) {
-                console.log('[step done]', { text: text?.substring(0, 100), finishReason, usage });
-                if (toolCalls?.length) console.log('[tool calls]', toolCalls);
-            },
-            onFinish({ response, totalUsage }) {
-                const generated = response.messages;
-                setHistory(finalConversationId, [...prior, ...modelMessages, ...generated]);
-                console.log('[totalUsage]', totalUsage);
             },
             tools: {
                 weather: tool({
@@ -87,26 +120,55 @@ export async function POST(request:Request){
                         console.log("Fetching weather for:", location);
                         try {
                             const data = await fetchWeather(location);
-                            console.log("Weather data:", data);
                             return data;
                         } catch (error) {
                             console.error("Weather fetch error:", error);
                             return { error: "Failed to fetch weather data" };
                         }
                     },
+                }),
+                create_trip_card: tool({
+                    description: "Create a structured trip recommendation card with packing advice and cautions",
+                    inputSchema: TripCard,
+                    execute({ city, summary, packingAdvice, cautions }) {
+                        return {
+                            city,
+                            summary,
+                            packingAdvice,
+                            cautions,
+                            createdAt: new Date().toISOString()
+                        };
+                    },
+                }),
+                create_packing_list: tool({
+                    description: "Create a detailed packing list with reasons for each item",
+                    inputSchema: z.object({
+                        items: PackingList.describe('Array of packing items with reasons')
+                    }),
+                    execute({items}) {
+                        return {
+                            items,
+                            totalItems: items.length,
+                            createdAt: new Date().toISOString()
+                        };
+                    },
                 })
+            },
+            toolChoice: "auto",
+            stopWhen: stepCountIs(10),
+            onFinish({ response, totalUsage }) {
+                const generated = response.messages;
+                setHistory(finalConversationId, [...prior, ...modelMessages, ...generated]);
+                console.log('[totalUsage]', totalUsage);
             },
             onError({ error }) {
                 console.error("Stream Error: ", error);
             },
         });
 
-        const streamResponse = response.toUIMessageStreamResponse({
+        return response.toUIMessageStreamResponse({
             originalMessages: messages,
-        });
-        return new Response(streamResponse.body, {
             headers: {
-                ...streamResponse.headers,
                 'x-conversation-id': finalConversationId,
             },
         });
@@ -119,4 +181,5 @@ export async function POST(request:Request){
         });
     }
 }
+
 
