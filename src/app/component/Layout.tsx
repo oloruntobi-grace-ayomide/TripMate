@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState,useEffect } from "react";
+import { IoHomeOutline, IoPlanetOutline} from "react-icons/io5";
 
 
 
@@ -51,8 +52,8 @@ export default function PagesLayout({children, footer}: Readonly<{children: Reac
             {/*  Sidebar content here */}
             <nav className="p-[20px]">
                 <ul>
-                    <li><Link href="/" className={`flex items-center gap-x-[6px] mb-[10px] p-[5px] hover:text-[#4ECDC4] ${pathName === "/"? "bg-[#fff] text-[#2D3748]" : "text-[#fff]"}`}><span className="icon">🏠</span> <span className="description">Home</span></Link></li>
-                    <li><Link href="/events" className={`flex items-center gap-x-[6px] p-[5px] hover:text-[#4ECDC4] ${pathName === "/events"? "bg-[#fff] text-[#2D3748]" : "text-[#fff]"}`}><span className="icon">📅</span> <span className="description">Events</span></Link></li>
+                    <li><Link href="/" className={`flex items-center gap-x-[6px] mb-[10px] p-[5px] hover:text-[#4ECDC4] ${pathName === "/"? "bg-[#fff] text-[#2D3748]" : "text-[#fff]"}`}><span className="icon"><IoHomeOutline/></span> <span className="description">Home</span></Link></li>
+                    <li><Link href="/events" className={`flex items-center gap-x-[6px] p-[5px] hover:text-[#4ECDC4] ${pathName === "/events"? "bg-[#fff] text-[#2D3748]" : "text-[#fff]"}`}><span className="icon"><IoPlanetOutline/></span> <span className="description">Events</span></Link></li>
                 </ul>
             </nav>
 
