@@ -307,7 +307,28 @@ export default function DynamicChat() {
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFiles(e.target.files || undefined);
+    if (e.target.files && e.target.files.length > 0) {
+      if (files && files.length > 0) {
+        // Append new files to existing ones
+        const currentFiles = Array.from(files);
+        const newFiles = Array.from(e.target.files);
+        const combinedFiles = [...currentFiles, ...newFiles];
+        
+        const dt = new DataTransfer();
+        combinedFiles.forEach(file => dt.items.add(file));
+        setFiles(dt.files);
+      } else {
+        // No existing files, just set new ones
+        setFiles(e.target.files);
+      }
+    }
+  };
+
+  const handleRemoveFile = (index: number) => {
+    const newFiles = Array.from(files || []).filter((_, i) => i !== index);
+    const dt = new DataTransfer();
+    newFiles.forEach(file => dt.items.add(file));
+    setFiles(dt.files);
   };
 
   return (
@@ -317,8 +338,10 @@ export default function DynamicChat() {
           input={input}
           setInput={setInput}
           fileInputRef={fileInputRef}
-          status={status}
+          files={files}
           onFileChange={handleFileChange}
+          onRemoveFile={handleRemoveFile}
+          status={status}
           handleStop={stop}
           handleSubmit={handleSubmit}
         />

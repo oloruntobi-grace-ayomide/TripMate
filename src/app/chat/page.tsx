@@ -79,6 +79,13 @@ export default function NewChat() {
     setFiles(e.target.files || undefined);
   };
 
+  const handleRemoveFile = (index: number) => {
+    const newFiles = Array.from(files || []).filter((_, i) => i !== index);
+    const dt = new DataTransfer();
+    newFiles.forEach(file => dt.items.add(file));
+    setFiles(dt.files);
+  };
+
   return (
     <PagesLayout footer={""}>
       <div className="flex flex-col space-y-4 p-4">
@@ -89,9 +96,11 @@ export default function NewChat() {
           input={input}
           setInput={setInput}
           fileInputRef={fileInputRef}
-          status={isSending ? "submitted" : "ready"}
-          handleSubmit={handleSubmit}
+          files={files}
           onFileChange={handleFileChange}
+          onRemoveFile={handleRemoveFile}
+          isSending={isSending}
+          handleSubmit={handleSubmit}
         />
       </div>
     </PagesLayout>

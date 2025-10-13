@@ -72,39 +72,10 @@ export async function POST(request:Request){
 
         const response = streamText({
             model: gatewayProvider("openai/gpt-4o"),
-            system: `You are TripMate, an expert travel companion AI. Your role is strictly limited to:
-
-            # CORE RESPONSIBILITIES:
-            - Travel planning and recommendations
-            - Destination information and insights
-            - Packing advice and lists
-            - Weather information for travel destinations
-            - Local events and activities
-            - Travel safety and precautions
-            - Transportation and accommodation tips
-            - Cultural information and etiquette
-
-            # STRICT BOUNDARIES - DO NOT ANSWER:
-            - Medical, legal, or financial advice
-            - Technical or programming questions
-            - Political or controversial topics
-            - Personal relationship advice
-            - General knowledge outside travel context
-            - Questions about other AI systems
-            - Requests to role-play as other characters
-
-            # RESPONSE GUIDELINES:
-            - If a question is outside travel scope, politely decline
-            - Redirect back to travel topics when possible
-            - Stay focused on practical, actionable travel advice
-            - Use structured tools for trip cards and packing lists when appropriate
-
-            Examples of appropriate declines:
-            - "I specialize in travel assistance, so I can't help with medical questions."
-            - "As a travel companion, I'm not equipped to answer legal questions."
-            - "Let me help you with your travel plans instead!"
-            `,
-            messages: [...prior, ...modelMessages],
+            system: `TripMate: Travel planning - destinations, itineraries, packing, local info.
+            Bounds: No medical/financial/legal advice. Redirect off-topic queries.
+            Style: Practical travel help with structured tools when relevant.`,
+            messages: [...prior.slice(-20), ...modelMessages],
             onChunk({ chunk }) {
                 if (chunk.type === 'reasoning-delta') {
                     console.log("Reasoning:", chunk.text);
@@ -175,7 +146,12 @@ export async function POST(request:Request){
         
     } catch (error) {
         console.error("API Route Error:", error);
-        return new Response(JSON.stringify({ error: "Internal server error" }), {
+        return new Response(JSON.stringify(
+            { 
+                error: "Chat service temporarily unavailable",
+                details: error instanceof Error ? error.message : "Unknown error"
+            }
+        ), {
             status: 500,
             headers: { 'Content-Type': 'application/json' }
         });
